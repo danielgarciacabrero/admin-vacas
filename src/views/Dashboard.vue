@@ -9,7 +9,6 @@
       <div class="p-6 border-b border-indigo-800 bg-indigo-950/50">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
-            <!-- Avatar: imagen si existe, letra si no -->
             <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
               <img 
                 v-if="userAvatar" 
@@ -86,6 +85,7 @@ const userEmail = ref("");
 const userRole = ref("");
 const userAdmin = ref("");
 const userAvatar = ref("");
+const myCognitoId = ref("");
  
 onMounted(async () => {
   const token = localStorage.getItem('idToken');
@@ -95,16 +95,20 @@ onMounted(async () => {
       userEmail.value = decoded.email;
       userRole.value = decoded['custom:role'];
       userAdmin.value = decoded['custom:admin'] || "";
+      myCognitoId.value = decoded.sub;
     } catch (e) {
       console.error("Error al decodificar token");
     }
   }
  
-  // Obtenemos nuestro avatar_url desde el endpoint de empleados
+  // Obtenemos nuestro avatar buscando por cognito_id
   try {
-    const res = await client.get('/employees', { params: { limit: 1 } });
-    if (res.data.data && res.data.data.length > 0) {
-      userAvatar.value = res.data.data[0].avatar_url || "";
+    const res = await client.get('/employees', { params: { limit: 100 } });
+    if (res.data.data) {
+      const me = res.data.data.find(emp => emp.cognito_id === myCognitoId.value);
+      if (me && me.avatar_url) {
+        userAvatar.value = me.avatar_url;
+      }
     }
   } catch (e) {
     console.error("Error obteniendo avatar", e);

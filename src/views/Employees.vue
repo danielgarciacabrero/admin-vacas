@@ -15,25 +15,40 @@ const sortOrder = ref("ASC");
 const hasMore = ref(true);
 const loading = ref(false);
 
-// --- Mi employee_id (para saber cuál es mi fila) ---
+// --- Mi employee_id y cognito_id ---
 const myEmployeeId = ref(null);
+const myCognitoId = ref("");
 
 // --- Estado de subida de avatar ---
 const uploading = ref(false);
 
 onMounted(async () => {
-  // Obtener mi employee_id
-  try {
-    const res = await client.get('/employees', { params: { limit: 1 } });
-    if (res.data.data && res.data.data.length > 0) {
-      myEmployeeId.value = res.data.data[0].id;
+  // Sacamos el cognito_id (sub) del token
+  const token = localStorage.getItem('idToken');
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      myCognitoId.value = decoded.sub;
+    } catch (e) {
+      console.error("Error al decodificar token", e);
     }
-  } catch (e) {
-    console.error("Error obteniendo employee_id", e);
   }
 
-  fetchEmployees();
+  // Primero cargamos la tabla
+  await fetchEmployees();
+
+  // Buscamos nuestro registro por cognito_id en los datos cargados
+  findMyself();
 });
+
+// --- Buscar mi propio registro por cognito_id ---
+const findMyself = () => {
+  if (!myCognitoId.value) return;
+  const me = employees.value.find(emp => emp.cognito_id === myCognitoId.value);
+  if (me) {
+    myEmployeeId.value = me.id;
+  }
+};
 
 // --- Llamada al backend ---
 const fetchEmployees = async () => {
@@ -49,6 +64,8 @@ const fetchEmployees = async () => {
     });
     employees.value = res.data.data;
     hasMore.value = res.data.data.length >= limit.value;
+    // Intentamos encontrarnos en esta página
+    findMyself();
   } catch (error) {
     console.error("Error al cargar empleados", error);
   } finally {
@@ -95,10 +112,9 @@ const filteredEmployees = () => {
 
 // --- Subida de avatar ---
 const triggerUpload = (empId) => {
-  // Solo puedo subir mi propio avatar (el backend también lo valida)
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = 'image/*';
+  input.accept = 'image/jpeg,image/png,image/webp';
   input.onchange = (e) => handleAvatarUpload(e, empId);
   input.click();
 };
@@ -107,30 +123,25 @@ const handleAvatarUpload = async (event, empId) => {
   const file = event.target.files[0];
   if (!file) return;
 
-  // Validar tamaño (max 2MB)
   if (file.size > 2 * 1024 * 1024) {
     return alert("La imagen no puede superar los 2MB");
   }
 
-  // Validar que sea imagen
   if (!file.type.startsWith('image/')) {
     return alert("El archivo debe ser una imagen");
   }
 
   uploading.value = true;
   try {
-    // Leer el archivo como base64
-    const base64 = await fileToBase64(file);
+    // Leemos el archivo como ArrayBuffer y lo enviamos como binario
+    const arrayBuffer = await file.arrayBuffer();
 
-    // Enviar al backend: PUT /employees/{id}/avatar
-    // El backend espera el body en base64 y el content-type en el header
-    await client.put(`/employees/${empId}/avatar`, base64, {
+    await client.put(`/employees/${empId}/avatar`, arrayBuffer, {
       headers: {
         'Content-Type': file.type
       }
     });
 
-    // Refrescar la tabla para ver el nuevo avatar
     fetchEmployees();
   } catch (error) {
     const msg = error.response?.data?.message || "Error al subir el avatar";
@@ -140,23 +151,8 @@ const handleAvatarUpload = async (event, empId) => {
   }
 };
 
-// Convierte un File a string base64 (sin el prefijo data:...)
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      // reader.result es "data:image/jpeg;base64,/9j/4AAQ..."
-      // Quitamos el prefijo y nos quedamos solo con el base64 puro
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
-
-// ¿Es mi propia fila? (para mostrar el botón de subir)
-const isMyRow = (emp) => emp.id === myEmployeeId.value;
+// ¿Es mi propia fila?
+const isMyRow = (emp) => emp.cognito_id === myCognitoId.value;
 </script>
 
 <template>
@@ -205,8 +201,7 @@ const isMyRow = (emp) => emp.id === myEmployeeId.value;
           <tr v-for="emp in filteredEmployees()" :key="emp.id" class="hover:bg-indigo-50/30 transition-colors group">
             <td class="p-5">
               <div class="flex items-center gap-3">
-                <!-- Avatar: imagen si existe, letra si no -->
-                <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+                <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-indigo-100">
                   <img 
                     v-if="emp.avatar_url" 
                     :src="emp.avatar_url" 
@@ -215,7 +210,7 @@ const isMyRow = (emp) => emp.id === myEmployeeId.value;
                   />
                   <div 
                     v-else 
-                    class="w-full h-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold"
+                    class="w-full h-full text-indigo-700 flex items-center justify-center font-bold"
                   >
                     {{ emp.name.charAt(0) }}
                   </div>
@@ -232,7 +227,6 @@ const isMyRow = (emp) => emp.id === myEmployeeId.value;
               </div>
             </td>
             <td class="p-5 text-center">
-              <!-- Botón subir avatar: solo en mi propia fila -->
               <button 
                 v-if="isMyRow(emp)"
                 @click="triggerUpload(emp.id)"

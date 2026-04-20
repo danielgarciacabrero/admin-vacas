@@ -14,8 +14,9 @@ const sortOrder = ref("ASC");
 const hasMore = ref(true);
 const loading = ref(false);
 
-// --- Rol del usuario y su employee_id ---
+// --- Rol del usuario, cognito_id y employee_id ---
 const userRole = ref("");
+const myCognitoId = ref("");
 const myEmployeeId = ref(null);
 
 // --- Estado del panel de acción (aprobar/rechazar) ---
@@ -33,6 +34,7 @@ const requestForm = ref({
   start_date: "",
   end_date: "",
   comment: "",
+  pdfFile: null,
   processing: false
 });
 
@@ -43,6 +45,9 @@ const cancelPanel = ref({
   processing: false
 });
 
+// --- Subida de PDF para solicitudes existentes ---
+const uploadingPdfId = ref(null);
+
 // --- Leer el rol del token y obtener el employee_id al montar ---
 onMounted(async () => {
   const token = localStorage.getItem('idToken');
@@ -50,16 +55,20 @@ onMounted(async () => {
     try {
       const decoded = jwtDecode(token);
       userRole.value = decoded['custom:role'];
+      myCognitoId.value = decoded.sub;
     } catch (e) {
       console.error("Error al decodificar token", e);
     }
   }
 
-  // Obtenemos nuestro employee_id
+  // Obtenemos nuestro employee_id buscando por cognito_id
   try {
-    const res = await client.get('/employees', { params: { limit: 1 } });
-    if (res.data.data && res.data.data.length > 0) {
-      myEmployeeId.value = res.data.data[0].id;
+    const res = await client.get('/employees', { params: { limit: 100 } });
+    if (res.data.data) {
+      const me = res.data.data.find(emp => emp.cognito_id === myCognitoId.value);
+      if (me) {
+        myEmployeeId.value = me.id;
+      }
     }
   } catch (e) {
     console.error("Error obteniendo employee_id", e);
@@ -159,12 +168,29 @@ const openRequestForm = () => {
     start_date: "",
     end_date: "",
     comment: "",
+    pdfFile: null,
     processing: false
   };
 };
 
 const closeRequestForm = () => {
   requestForm.value.visible = false;
+};
+
+const onPdfSelected = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.type !== 'application/pdf') {
+    alert("El archivo debe ser un PDF");
+    event.target.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert("El PDF no puede superar los 5MB");
+    event.target.value = '';
+    return;
+  }
+  requestForm.value.pdfFile = file;
 };
 
 const submitRequest = async () => {
@@ -180,12 +206,23 @@ const submitRequest = async () => {
 
   requestForm.value.processing = true;
   try {
-    await client.post('/vacations', {
+    // 1. Crear la solicitud
+    const res = await client.post('/vacations', {
       employee_id: myEmployeeId.value,
       start_date: requestForm.value.start_date,
       end_date: requestForm.value.end_date,
       employee_comment: requestForm.value.comment || null
     });
+
+    // 2. Si hay PDF adjunto, subirlo a la solicitud recién creada
+    if (requestForm.value.pdfFile) {
+      const vacationId = res.data.VacationRequest;
+      const arrayBuffer = await requestForm.value.pdfFile.arrayBuffer();
+      await client.put(`/vacations/${vacationId}/pdf`, arrayBuffer, {
+        headers: { 'Content-Type': 'application/pdf' }
+      });
+    }
+
     closeRequestForm();
     fetchVacations();
   } catch (error) {
@@ -193,6 +230,38 @@ const submitRequest = async () => {
     alert(msg);
   } finally {
     requestForm.value.processing = false;
+  }
+};
+
+// ========================================
+// SUBIR PDF a solicitud existente
+// ========================================
+const triggerPdfUpload = (vacationId) => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf';
+  input.onchange = (e) => handlePdfUpload(e, vacationId);
+  input.click();
+};
+
+const handlePdfUpload = async (event, vacationId) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.type !== 'application/pdf') return alert("El archivo debe ser un PDF");
+  if (file.size > 5 * 1024 * 1024) return alert("El PDF no puede superar los 5MB");
+
+  uploadingPdfId.value = vacationId;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    await client.put(`/vacations/${vacationId}/pdf`, arrayBuffer, {
+      headers: { 'Content-Type': 'application/pdf' }
+    });
+    fetchVacations();
+  } catch (error) {
+    const msg = error.response?.data?.message || "Error al subir el PDF";
+    alert(msg);
+  } finally {
+    uploadingPdfId.value = null;
   }
 };
 
@@ -228,10 +297,12 @@ const confirmCancel = async () => {
 // --- Helpers ---
 const isSupervisor = () => userRole.value === "2";
 
-// ¿Puedo cancelar esta solicitud? Solo si es mía y está pendiente (0) o aprobada (1)
 const canCancel = (req) => {
   return req.employee_id === myEmployeeId.value && (req.status === 0 || req.status === 1);
 };
+
+// ¿Es mi solicitud? Para mostrar botón de subir PDF
+const isMyVacation = (req) => req.employee_id === myEmployeeId.value;
 
 const formatStatus = (status) => {
   const map = { 0: 'Pendiente', 1: 'Aprobado', 2: 'Rechazado', 3: 'Cancelado' };
@@ -277,24 +348,19 @@ const formatDate = (dateStr) => {
         <thead>
           <tr class="bg-gray-50/50 border-b border-gray-100">
             <th @click="sortBy('id')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
-              ID
-              <span v-if="sortKey === 'id'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
+              ID <span v-if="sortKey === 'id'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sortBy('employee_id')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
-              Empleado
-              <span v-if="sortKey === 'employee_id'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
+              Empleado <span v-if="sortKey === 'employee_id'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sortBy('start_date')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
-              Inicio
-              <span v-if="sortKey === 'start_date'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
+              Inicio <span v-if="sortKey === 'start_date'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sortBy('end_date')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
-              Fin
-              <span v-if="sortKey === 'end_date'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
+              Fin <span v-if="sortKey === 'end_date'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sortBy('status')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
-              Estado
-              <span v-if="sortKey === 'status'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
+              Estado <span v-if="sortKey === 'status'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">
               Acciones
@@ -314,7 +380,7 @@ const formatDate = (dateStr) => {
             </td>
             <td class="p-5 text-center">
               <div class="flex gap-2 justify-center flex-wrap">
-                <!-- Botones Aprobar/Rechazar: solo supervisor + solo pendientes -->
+                <!-- Aprobar/Rechazar: supervisor + pendientes -->
                 <template v-if="isSupervisor() && req.status === 0">
                   <button 
                     @click="openAction(req.id, 1)"
@@ -330,7 +396,7 @@ const formatDate = (dateStr) => {
                   </button>
                 </template>
 
-                <!-- Botón Cancelar: solo si es mi solicitud y está pendiente o aprobada -->
+                <!-- Cancelar: mi solicitud + pendiente o aprobada -->
                 <button 
                   v-if="canCancel(req)"
                   @click="openCancelPanel(req.id)"
@@ -339,8 +405,31 @@ const formatDate = (dateStr) => {
                   Cancelar
                 </button>
 
-                <!-- Si no hay ninguna acción disponible -->
-                <span v-if="!canCancel(req) && !(isSupervisor() && req.status === 0)" class="text-xs text-gray-400">—</span>
+                <!-- Subir PDF: mi solicitud -->
+                <button 
+                  v-if="isMyVacation(req) && (req.status === 0 || req.status === 1)"
+                  @click="triggerPdfUpload(req.id)"
+                  :disabled="uploadingPdfId === req.id"
+                  class="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-100 text-indigo-600 hover:bg-indigo-200 transition-all"
+                >
+                  {{ uploadingPdfId === req.id ? 'Subiendo...' : (req.pdf_url ? 'Cambiar PDF' : 'Subir PDF') }}
+                </button>
+
+                <!-- Ver PDF si existe -->
+                <a 
+                  v-if="req.pdf_url"
+                  :href="req.pdf_url"
+                  target="_blank"
+                  class="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-all"
+                >
+                  Ver PDF
+                </a>
+
+                <!-- Guion si no hay acciones -->
+                <span 
+                  v-if="!canCancel(req) && !(isSupervisor() && req.status === 0) && !isMyVacation(req) && !req.pdf_url" 
+                  class="text-xs text-gray-400"
+                >—</span>
               </div>
             </td>
           </tr>
@@ -383,7 +472,7 @@ const formatDate = (dateStr) => {
       </div>
     </div>
 
-    <!-- ====== MODAL: Aprobar / Rechazar (supervisor) ====== -->
+    <!-- ====== MODAL: Aprobar / Rechazar ====== -->
     <div v-if="actionPanel.visible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
         <h3 class="text-lg font-bold text-gray-800 mb-2">
@@ -393,76 +482,60 @@ const formatDate = (dateStr) => {
           Solicitud #{{ actionPanel.vacationId }} · 
           {{ actionPanel.status === 1 ? 'Se descontarán los días al empleado.' : 'El empleado será notificado del rechazo.' }}
         </p>
-
         <label class="block text-sm font-medium text-gray-700 mb-1">Comentario (opcional)</label>
         <textarea 
-          v-model="actionPanel.comment"
-          rows="3"
+          v-model="actionPanel.comment" rows="3"
           placeholder="Ej: Aprobado, disfruta las vacaciones..."
           class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 resize-none mb-4"
         ></textarea>
-
         <div class="flex gap-3 justify-end">
-          <button 
-            @click="closeAction"
-            class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
-          >
-            Volver
-          </button>
-          <button 
-            @click="confirmAction"
-            :disabled="actionPanel.processing"
+          <button @click="closeAction" class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">Volver</button>
+          <button @click="confirmAction" :disabled="actionPanel.processing"
             class="px-4 py-2 text-sm font-bold text-white rounded-xl transition-all"
-            :class="actionPanel.status === 1 
-              ? 'bg-green-600 hover:bg-green-700' 
-              : 'bg-red-600 hover:bg-red-700'"
-          >
+            :class="actionPanel.status === 1 ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'">
             {{ actionPanel.processing ? 'Procesando...' : (actionPanel.status === 1 ? 'Confirmar aprobación' : 'Confirmar rechazo') }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ====== MODAL: Solicitar vacaciones ====== -->
+    <!-- ====== MODAL: Solicitar vacaciones + PDF opcional ====== -->
     <div v-if="requestForm.visible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
         <h3 class="text-lg font-bold text-gray-800 mb-1">Solicitar vacaciones</h3>
-        <p class="text-sm text-gray-500 mb-5">Selecciona las fechas y añade un comentario si quieres.</p>
+        <p class="text-sm text-gray-500 mb-5">Selecciona las fechas y adjunta un documento si quieres.</p>
 
         <label class="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio</label>
-        <input 
-          v-model="requestForm.start_date"
-          type="date"
-          class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 mb-4"
-        />
+        <input v-model="requestForm.start_date" type="date"
+          class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 mb-4" />
 
         <label class="block text-sm font-medium text-gray-700 mb-1">Fecha de fin</label>
-        <input 
-          v-model="requestForm.end_date"
-          type="date"
-          class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 mb-4"
-        />
+        <input v-model="requestForm.end_date" type="date"
+          class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 mb-4" />
 
         <label class="block text-sm font-medium text-gray-700 mb-1">Comentario (opcional)</label>
-        <textarea 
-          v-model="requestForm.comment"
-          rows="3"
+        <textarea v-model="requestForm.comment" rows="2"
           placeholder="Ej: Viaje familiar, cita médica..."
           class="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 resize-none mb-4"
         ></textarea>
 
+        <!-- Campo PDF opcional -->
+        <label class="block text-sm font-medium text-gray-700 mb-1">Documento PDF (opcional)</label>
+        <div class="flex items-center gap-3 mb-4">
+          <input type="file" accept="application/pdf" @change="onPdfSelected"
+            class="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100" />
+          <span v-if="requestForm.pdfFile" class="text-xs text-green-600 font-medium">
+            {{ requestForm.pdfFile.name }}
+          </span>
+        </div>
+
         <div class="flex gap-3 justify-end">
-          <button 
-            @click="closeRequestForm"
-            class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
-          >
+          <button @click="closeRequestForm"
+            class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">
             Cancelar
           </button>
-          <button 
-            @click="submitRequest"
-            :disabled="requestForm.processing"
-            class="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all"
-          >
+          <button @click="submitRequest" :disabled="requestForm.processing"
+            class="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all">
             {{ requestForm.processing ? 'Enviando...' : 'Enviar solicitud' }}
           </button>
         </div>
@@ -476,19 +549,10 @@ const formatDate = (dateStr) => {
         <p class="text-sm text-gray-500 mb-5">
           Solicitud #{{ cancelPanel.vacationId }} · Si estaba aprobada, se te devolverán los días de vacaciones.
         </p>
-
         <div class="flex gap-3 justify-end">
-          <button 
-            @click="closeCancelPanel"
-            class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
-          >
-            Volver
-          </button>
-          <button 
-            @click="confirmCancel"
-            :disabled="cancelPanel.processing"
-            class="px-4 py-2 text-sm font-bold text-white bg-gray-600 rounded-xl hover:bg-gray-700 transition-all"
-          >
+          <button @click="closeCancelPanel" class="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">Volver</button>
+          <button @click="confirmCancel" :disabled="cancelPanel.processing"
+            class="px-4 py-2 text-sm font-bold text-white bg-gray-600 rounded-xl hover:bg-gray-700 transition-all">
             {{ cancelPanel.processing ? 'Cancelando...' : 'Confirmar cancelación' }}
           </button>
         </div>
