@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* Reset para asegurar el centrado */
+#app {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  background-color: #f3f4f6; /* bg-gray-100 */
+}
