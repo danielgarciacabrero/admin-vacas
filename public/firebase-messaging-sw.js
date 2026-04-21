@@ -22,9 +22,9 @@ messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || "Nueva notificación";
   const options = {
     body: payload.notification?.body || "",
-    icon: "/favicon.svg"
-  };
- 
+    icon: "/favicon.svg",
+    requireInteraction: true
+};
   self.registration.showNotification(title, options);
 });
  

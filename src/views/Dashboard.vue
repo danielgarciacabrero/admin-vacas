@@ -119,7 +119,7 @@ let toastTimer = null;
 const showToast = (title, body) => {
   toast.value = { visible: true, title, body };
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.value.visible = false; }, 6000);
+  // sin setTimeout, se queda hasta que el usuario cierre con la X
 };
 
 onMounted(async () => {
