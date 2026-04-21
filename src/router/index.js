@@ -6,6 +6,7 @@ import Supervisors from '../views/Supervisors.vue'
 import Employees from '../views/Employees.vue'
 import Vacations from '../views/Vacations.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
+import Holidays from '../views/Holidays.vue'
 
 const routes = [
   { 
@@ -38,6 +39,12 @@ const routes = [
         name: 'Vacations',
         component: Vacations 
       },
+      { 
+        path: 'holidays', 
+        name: 'Holidays',
+        component: Holidays,
+        meta: { requiredRole: 'ceo_only' }
+      },
     ]
   }
 ]
@@ -47,22 +54,18 @@ const router = createRouter({
   routes
 })
 
-// Guard de seguridad
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('idToken');
   const isAuthenticated = !!token;
   
-  // Si intenta ir al dashboard sin estar logueado, lo mandamos al login
   if (to.path.startsWith('/dashboard') && !isAuthenticated) {
     return next('/');
   }
   
-  // Si ya está logueado e intenta ir al login, lo mandamos al dashboard
   if (to.path === '/' && isAuthenticated) {
     return next('/dashboard/employees');
   }
 
-  // Protección de rutas por rol
   if (to.meta.requiredRole && token) {
     try {
       const decoded = jwtDecode(token);
@@ -70,8 +73,13 @@ router.beforeEach((to, from, next) => {
       const admin = decoded['custom:admin'];
 
       if (to.meta.requiredRole === 'supervisor_or_ceo') {
-        // Solo supervisor (role 2) o CEO (admin = "true") pueden entrar
         if (role !== '2' && admin !== 'true') {
+          return next('/dashboard/employees');
+        }
+      }
+
+      if (to.meta.requiredRole === 'ceo_only') {
+        if (admin !== 'true') {
           return next('/dashboard/employees');
         }
       }
