@@ -42,8 +42,7 @@ const routes = [
       { 
         path: 'holidays', 
         name: 'Holidays',
-        component: Holidays,
-        meta: { requiredRole: 'ceo_only' }
+        component: Holidays
       },
     ]
   }

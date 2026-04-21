@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { jwtDecode } from 'jwt-decode';
 import client from '../api/client';
 
 // lista de festivos
@@ -10,8 +11,20 @@ const loading = ref(false);
 const uploading = ref(false);
 const uploadResult = ref(null);
 
-// cargamos los festivos al montar el componente
+// comprobamos si es el ceo
+const isCeo = ref(false);
+
+// cargamos los festivos y comprobamos el rol al montar
 onMounted(() => {
+  const token = localStorage.getItem('idToken');
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      isCeo.value = decoded['custom:admin'] === 'true';
+    } catch (e) {
+      console.error("Error decodificando token");
+    }
+  }
   fetchHolidays();
 });
 
@@ -91,11 +104,12 @@ const formatDate = (dateStr) => {
     <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
       <div>
         <h3 class="text-3xl font-black text-gray-800 tracking-tight">Días Festivos</h3>
-        <p class="text-gray-500 font-medium">Gestiona los días festivos que no cuentan como vacaciones</p>
+        <p class="text-gray-500 font-medium">Días festivos que no cuentan como vacaciones</p>
       </div>
 
-      <!-- Boton para subir CSV -->
+      <!-- Boton para subir CSV, solo el CEO -->
       <label
+        v-if="isCeo"
         class="px-5 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2 cursor-pointer">
         <span class="text-lg">📄</span>
         {{ uploading ? 'Subiendo...' : 'Subir CSV' }}
@@ -124,8 +138,8 @@ const formatDate = (dateStr) => {
       </div>
     </div>
 
-    <!-- Info del formato -->
-    <div class="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+    <!-- Info del formato, solo el CEO -->
+    <div v-if="isCeo" class="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
       <p class="font-bold text-blue-800 text-sm">Formato del CSV</p>
       <p class="text-blue-600 text-xs mt-1">Cada línea con formato: <span class="font-mono bg-blue-100 px-1 rounded">2026-01-01;Año Nuevo</span></p>
       <p class="text-blue-600 text-xs mt-0.5">Separador: punto y coma (;). Sin cabecera.</p>
@@ -139,7 +153,7 @@ const formatDate = (dateStr) => {
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">ID</th>
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Fecha</th>
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Descripción</th>
-            <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">Acciones</th>
+            <th v-if="isCeo" class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">Acciones</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
@@ -147,7 +161,7 @@ const formatDate = (dateStr) => {
             <td class="p-5 font-semibold text-gray-700">{{ holiday.id }}</td>
             <td class="p-5 text-gray-500 font-medium">{{ formatDate(holiday.holiday_date) }}</td>
             <td class="p-5 text-gray-500 font-medium">{{ holiday.description || '-' }}</td>
-            <td class="p-5 text-center">
+            <td v-if="isCeo" class="p-5 text-center">
               <button
                 @click="deleteHoliday(holiday.id)"
                 class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-all">
@@ -156,12 +170,12 @@ const formatDate = (dateStr) => {
             </td>
           </tr>
           <tr v-if="holidays.length === 0 && !loading">
-            <td colspan="4" class="p-20 text-center text-gray-400 font-medium">
-              No hay días festivos registrados. Sube un CSV para añadirlos.
+            <td :colspan="isCeo ? 4 : 3" class="p-20 text-center text-gray-400 font-medium">
+              No hay días festivos registrados.
             </td>
           </tr>
           <tr v-if="loading">
-            <td colspan="4" class="p-20 text-center text-gray-400 font-medium">
+            <td :colspan="isCeo ? 4 : 3" class="p-20 text-center text-gray-400 font-medium">
               Cargando festivos...
             </td>
           </tr>

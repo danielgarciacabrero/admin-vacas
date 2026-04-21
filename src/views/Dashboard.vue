@@ -65,14 +65,13 @@
             {{ pendingCount }}
           </span>
         </router-link>
-        <router-link 
-          v-if="isCeo"
-          to="/dashboard/holidays" 
-          class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
-          active-class="bg-indigo-700 shadow-inner">
-          <span class="group-hover:scale-110 transition-transform">📅</span> 
-          <span class="font-medium">Festivos</span>
-</router-link>
+       <router-link 
+         to="/dashboard/holidays" 
+         class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
+         active-class="bg-indigo-700 shadow-inner">
+         <span class="group-hover:scale-110 transition-transform">📅</span> 
+         <span class="font-medium">Festivos</span>
+       </router-link>
       </nav>
 
       <!-- Estado de notificaciones -->
