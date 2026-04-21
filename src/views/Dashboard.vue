@@ -79,7 +79,8 @@
     <main class="flex-1 overflow-y-auto p-8 bg-gray-50">
       <!-- Toast de notificación en primer plano -->
       <div v-if="toast.visible" 
-        class="fixed top-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 max-w-sm animate-slide-in">
+        class="fixed top-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 max-w-sm animate-slide-in"
+        style="pointer-events: auto;">
         <div class="flex items-start gap-3">
           <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg flex-shrink-0">
             🔔
@@ -88,7 +89,7 @@
             <p class="font-bold text-gray-800 text-sm">{{ toast.title }}</p>
             <p class="text-gray-500 text-xs mt-1">{{ toast.body }}</p>
           </div>
-          <button @click="toast.visible = false" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+          <button @click="toast.visible = false" class="text-gray-400 hover:text-gray-600 text-lg leading-none cursor-pointer">&times;</button>
         </div>
       </div>
 
@@ -112,13 +113,13 @@ const userAvatar = ref("");
 const myCognitoId = ref("");
 const notifStatus = ref("");
 
-// --- Toast para notificaciones en primer plano ---
+// toast para notificaciones en primer plano, solo se cierra con la X
 const toast = ref({ visible: false, title: "", body: "" });
-let toastTimer = null;
 
 const showToast = (title, body) => {
   toast.value = { visible: true, title, body };
-
+  
+};
 
 onMounted(async () => {
   const token = localStorage.getItem('idToken');
@@ -147,7 +148,7 @@ onMounted(async () => {
     console.error("Error obteniendo avatar", e);
   }
 
-  // --- Configurar notificaciones push ---
+  // configurar notificaciones push
   await setupNotifications();
 });
 
@@ -180,7 +181,7 @@ const setupNotifications = async () => {
   }
 };
 
-// --- Helpers de rol ---
+// helpers de rol
 const isCeo = computed(() => userAdmin.value === "true");
 const isSupervisor = computed(() => userRole.value === "2");
 
