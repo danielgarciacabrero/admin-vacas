@@ -36,7 +36,7 @@
         </div>
       </div>
 
-      <!-- Menú de navegación con control de roles -->
+      <!-- Menu de navegacion con control de roles -->
       <nav class="flex-1 p-4 space-y-2 mt-2">
         <router-link to="/dashboard/employees" 
           class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
@@ -59,6 +59,11 @@
           active-class="bg-indigo-700 shadow-inner">
           <span class="group-hover:scale-110 transition-transform">✈️</span> 
           <span class="font-medium">Vacaciones</span>
+          <!-- badge con el numero de pendientes -->
+          <span v-if="pendingCount > 0" 
+            class="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
+            {{ pendingCount }}
+          </span>
         </router-link>
       </nav>
 
@@ -77,10 +82,30 @@
     </aside>
 
     <main class="flex-1 overflow-y-auto p-8 bg-gray-50">
-      <!-- Toast de notificación en primer plano -->
+
+      <!-- Banner de solicitudes pendientes para el supervisor -->
+      <div v-if="pendingCount > 0" 
+        class="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-lg flex-shrink-0">
+            ⚠️
+          </div>
+          <div>
+            <p class="font-bold text-amber-800 text-sm">
+              Tienes {{ pendingCount }} solicitud{{ pendingCount > 1 ? 'es' : '' }} pendiente{{ pendingCount > 1 ? 's' : '' }} de revisar
+            </p>
+            <p class="text-amber-600 text-xs mt-0.5">Aprueba o rechaza las solicitudes de vacaciones de tus empleados</p>
+          </div>
+        </div>
+        <router-link to="/dashboard/vacations"
+          class="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 transition-all flex-shrink-0">
+          Revisar
+        </router-link>
+      </div>
+
+      <!-- Toast de notificacion push en primer plano, solo se cierra con la X -->
       <div v-if="toast.visible" 
-        class="fixed top-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 max-w-sm animate-slide-in"
-        style="pointer-events: auto;">
+        class="fixed top-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 max-w-sm animate-slide-in">
         <div class="flex items-start gap-3">
           <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg flex-shrink-0">
             🔔
@@ -89,7 +114,7 @@
             <p class="font-bold text-gray-800 text-sm">{{ toast.title }}</p>
             <p class="text-gray-500 text-xs mt-1">{{ toast.body }}</p>
           </div>
-          <button @click="toast.visible = false" class="text-gray-400 hover:text-gray-600 text-lg leading-none cursor-pointer">&times;</button>
+          <button @click="closeToast" class="text-gray-400 hover:text-gray-600 text-lg leading-none cursor-pointer">&times;</button>
         </div>
       </div>
 
@@ -113,12 +138,20 @@ const userAvatar = ref("");
 const myCognitoId = ref("");
 const notifStatus = ref("");
 
-// toast para notificaciones en primer plano, solo se cierra con la X
+// solicitudes pendientes para el supervisor
+const pendingCount = ref(0);
+
+// toast para notificaciones push en primer plano
 const toast = ref({ visible: false, title: "", body: "" });
 
 const showToast = (title, body) => {
   toast.value = { visible: true, title, body };
-  
+};
+
+const closeToast = () => {
+  toast.value.visible = false;
+  // al cerrar el toast recargamos las pendientes por si ya gestionó algo
+  checkPendingRequests();
 };
 
 onMounted(async () => {
@@ -135,7 +168,7 @@ onMounted(async () => {
     }
   }
 
-  // Obtenemos nuestro avatar buscando por cognito_id
+  // obtenemos nuestro avatar buscando por cognito_id
   try {
     const res = await client.get('/employees', { params: { limit: 100 } });
     if (res.data.data) {
@@ -150,11 +183,32 @@ onMounted(async () => {
 
   // configurar notificaciones push
   await setupNotifications();
+
+  // si es supervisor o ceo, comprobar solicitudes pendientes
+  if (isSupervisor.value || isCeo.value) {
+    await checkPendingRequests();
+  }
 });
+
+// comprobamos cuantas solicitudes pendientes tiene el supervisor
+const checkPendingRequests = async () => {
+  try {
+    const res = await client.get('/vacations', {
+      params: { page: 1, limit: 100, sort: 'id', order: 'ASC' }
+    });
+    if (res.data.data) {
+      // contamos las que tienen status 0 (pendiente)
+      const pending = res.data.data.filter(v => v.status === 0);
+      pendingCount.value = pending.length;
+    }
+  } catch (e) {
+    console.error("Error comprobando solicitudes pendientes", e);
+  }
+};
 
 const setupNotifications = async () => {
   try {
-    // 1. Pedir permiso y obtener token FCM
+    // 1. pedir permiso y obtener token FCM
     const fcmToken = await requestNotificationPermission();
     
     if (!fcmToken) {
@@ -162,17 +216,21 @@ const setupNotifications = async () => {
       return;
     }
 
-    // 2. Registrar el token en nuestro backend
+    // 2. registrar el token en nuestro backend
     await client.put('/employees/fcm-token', { fcm_token: fcmToken });
     notifStatus.value = "activas";
     console.log("Token FCM registrado en el backend");
 
-    // 3. Escuchar notificaciones cuando la app está en primer plano
+    // 3. escuchar notificaciones cuando la app esta en primer plano
     onForegroundMessage((payload) => {
       showToast(
         payload.notification?.title || "Nueva notificación",
         payload.notification?.body || ""
       );
+      // actualizamos el contador de pendientes al recibir push
+      if (isSupervisor.value || isCeo.value) {
+        checkPendingRequests();
+      }
     });
 
   } catch (error) {
