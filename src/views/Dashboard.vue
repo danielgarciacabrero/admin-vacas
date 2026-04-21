@@ -118,9 +118,7 @@ let toastTimer = null;
 
 const showToast = (title, body) => {
   toast.value = { visible: true, title, body };
-  if (toastTimer) clearTimeout(toastTimer);
-  // sin setTimeout, se queda hasta que el usuario cierre con la X
-};
+
 
 onMounted(async () => {
   const token = localStorage.getItem('idToken');
