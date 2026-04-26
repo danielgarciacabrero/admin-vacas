@@ -72,6 +72,14 @@
          <span class="group-hover:scale-110 transition-transform">📅</span> 
          <span class="font-medium">Festivos</span>
        </router-link>
+       <router-link 
+          v-if="isCeo"
+          to="/dashboard/bulk-register" 
+          class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
+          active-class="bg-indigo-700 shadow-inner">
+          <span class="group-hover:scale-110 transition-transform">📋</span> 
+          <span class="font-medium">Registro masivo</span>
+</router-link>
       </nav>
 
       <!-- Estado de notificaciones -->
@@ -108,6 +116,7 @@
           class="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 transition-all flex-shrink-0">
           Revisar
         </router-link>
+        
       </div>
 
       <!-- Toast de notificacion push en primer plano, solo se cierra con la X -->

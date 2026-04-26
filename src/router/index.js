@@ -7,6 +7,7 @@ import Employees from '../views/Employees.vue'
 import Vacations from '../views/Vacations.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
 import Holidays from '../views/Holidays.vue'
+import BulkRegister from '../views/BulkRegister.vue'
 
 const routes = [
   { 
@@ -43,6 +44,12 @@ const routes = [
         path: 'holidays', 
         name: 'Holidays',
         component: Holidays
+      },
+      { 
+        path: 'bulk-register', 
+        name: 'BulkRegister',
+        component: BulkRegister,
+        meta: { requiredRole: 'ceo_only' }
       },
     ]
   }
