@@ -188,6 +188,9 @@ const isMyRow = (emp) => emp.cognito_id === myCognitoId.value;
               Email 
               <span v-if="sortKey === 'email'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
             </th>
+            <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">
+              Sede
+            </th>
             <th @click="sortBy('days_used')" class="p-5 font-bold text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors uppercase text-xs tracking-wider">
               Días Disponibles
               <span v-if="sortKey === 'days_used'">{{ sortOrder === 'ASC' ? '↑' : '↓' }}</span>
@@ -220,6 +223,12 @@ const isMyRow = (emp) => emp.cognito_id === myCognitoId.value;
             </td>
             <td class="p-5 text-gray-500 font-medium">{{ emp.email }}</td>
             <td class="p-5">
+              <span v-if="emp.sede_nombre" class="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">
+                {{ emp.sede_nombre }}
+              </span>
+              <span v-else class="text-xs text-gray-400">Sin sede</span>
+            </td>
+            <td class="p-5">
               <div class="flex items-center gap-2">
                 <span class="px-3 py-1 rounded-lg font-bold" :class="(emp.days_per_year - emp.days_used) > 5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
                   {{ emp.days_per_year - emp.days_used }} días
@@ -239,7 +248,7 @@ const isMyRow = (emp) => emp.cognito_id === myCognitoId.value;
             </td>
           </tr>
           <tr v-if="filteredEmployees().length === 0">
-            <td colspan="4" class="p-20 text-center text-gray-400 font-medium">
+            <td colspan="5" class="p-20 text-center text-gray-400 font-medium">
               No se han encontrado empleados con ese criterio.
             </td>
           </tr>

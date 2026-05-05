@@ -46,7 +46,7 @@
 
         <div class="border-t border-gray-100 pt-4 mt-2">
           <button 
-            @click="isRegister = true"
+            @click="showRegister"
             class="w-full text-sm text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
           >
             ¿Nuevo empleado? Regístrate aquí
@@ -98,6 +98,21 @@
           </select>
         </div>
 
+        <!-- Selector de sede -->
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-gray-700">Sede</label>
+          <select 
+            v-model="registerForm.sede_id"
+            class="w-full border border-gray-300 p-3 rounded-lg outline-none focus:border-indigo-500 shadow-sm bg-white"
+          >
+            <option :value="null" disabled>Selecciona tu sede</option>
+            <option v-for="sede in sedes" :key="sede.id" :value="sede.id">
+              {{ sede.nombre }}
+            </option>
+          </select>
+          <p v-if="sedes.length === 0" class="text-xs text-gray-400 mt-1">Cargando sedes...</p>
+        </div>
+
         <!-- Mensaje de éxito -->
         <div v-if="registerSuccess" class="bg-green-50 border border-green-200 text-green-700 p-3 rounded-lg text-sm">
           Empleado registrado correctamente. Ya puedes iniciar sesión.
@@ -139,17 +154,32 @@ const router = useRouter();
 // --- Control de qué formulario se muestra ---
 const isRegister = ref(false);
 
+// --- Lista de sedes para el selector ---
+const sedes = ref([]);
+
 // --- Estado del login ---
 const loginForm = ref({ email: '', password: '' });
 const loginLoading = ref(false);
 
-// --- Estado del registro ---
-const registerForm = ref({ name: '', email: '', password: '', role: null });
+// --- Estado del registro (ahora con sede_id) ---
+const registerForm = ref({ name: '', email: '', password: '', role: null, sede_id: null });
 const registerLoading = ref(false);
 const registerSuccess = ref(false);
 const registerError = ref('');
 
-// --- Lógica de login (la misma que antes) ---
+// cuando el usuario pulsa "registrarse" cargamos las sedes del backend
+// asi el select ya tiene las opciones disponibles
+const showRegister = async () => {
+  isRegister.value = true;
+  try {
+    const res = await client.get('/sedes');
+    sedes.value = res.data.data;
+  } catch (error) {
+    console.error("Error cargando sedes", error);
+  }
+};
+
+// --- Lógica de login ---
 const handleLogin = async () => {
   loginLoading.value = true;
   try {
@@ -167,9 +197,8 @@ const handleLogin = async () => {
   }
 };
 
-// --- Lógica de registro ---
+// --- Lógica de registro (ahora incluye sede_id) ---
 const handleRegister = async () => {
-  // Validaciones en frontend
   registerError.value = '';
   registerSuccess.value = false;
 
@@ -179,6 +208,10 @@ const handleRegister = async () => {
   }
   if (registerForm.value.role === null) {
     registerError.value = 'Selecciona un rol';
+    return;
+  }
+  if (registerForm.value.sede_id === null) {
+    registerError.value = 'Selecciona una sede';
     return;
   }
   if (registerForm.value.password.length < 8) {
@@ -192,12 +225,12 @@ const handleRegister = async () => {
       name: registerForm.value.name,
       email: registerForm.value.email,
       password: registerForm.value.password,
-      role: registerForm.value.role
+      role: registerForm.value.role,
+      sede_id: registerForm.value.sede_id
     });
 
     registerSuccess.value = true;
-    // Limpiamos el formulario
-    registerForm.value = { name: '', email: '', password: '', role: null };
+    registerForm.value = { name: '', email: '', password: '', role: null, sede_id: null };
   } catch (error) {
     registerError.value = error.response?.data?.message || 'Error al registrar el usuario';
   } finally {
