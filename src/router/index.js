@@ -9,7 +9,8 @@ import ForgotPassword from '../views/ForgotPassword.vue'
 import Holidays from '../views/Holidays.vue'
 import Sedes from '../views/Sedes.vue'
 import BulkRegister from '../views/BulkRegister.vue'
-
+import Fichajes from '../views/Fichajes.vue'
+import RegistroHorario from '../views/RegistroHorario.vue'
 const routes = [
   { 
     path: '/', 
@@ -57,6 +58,17 @@ const routes = [
         name: 'Sedes',
         component: Sedes,
         meta: { requiredRole: 'ceo_only' }
+      },
+      {
+        path: 'fichajes',
+        name: 'Fichajes',
+        component: Fichajes
+      },
+      {
+        path: 'registro-horario',
+        name: 'RegistroHorario',
+        component: RegistroHorario,
+        meta: { requiredRole: 'supervisor_or_ceo' }
       },
     ]
   }

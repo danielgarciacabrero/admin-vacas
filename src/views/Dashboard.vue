@@ -80,6 +80,22 @@
          <span class="group-hover:scale-110 transition-transform">🏢</span>
          <span class="font-medium">Sedes</span>
        </router-link>
+         <router-link
+         to="/dashboard/fichajes"
+         class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
+         active-class="bg-indigo-700 shadow-inner">
+         <span class="group-hover:scale-110 transition-transform">⏰</span>
+         <span class="font-medium">Fichaje</span>
+       </router-link>
+
+       <router-link
+         v-if="isSupervisor || isCeo"
+         to="/dashboard/registro-horario"
+         class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-800 transition-all duration-200 group"
+         active-class="bg-indigo-700 shadow-inner">
+         <span class="group-hover:scale-110 transition-transform">📊</span>
+         <span class="font-medium">Registro Horario</span>
+       </router-link>
        <router-link 
           v-if="isCeo"
           to="/dashboard/bulk-register" 
