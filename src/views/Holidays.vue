@@ -14,11 +14,14 @@ const uploadResult = ref(null);
 // comprobamos si es el ceo
 const isCeo = ref(false);
 
-// lista de sedes y sede seleccionada
+// lista de sedes y sede seleccionada para el filtro
 const sedes = ref([]);
 const sedeSeleccionada = ref(null);
 // sede seleccionada para subir el csv (puede ser distinta del filtro)
 const sedeUpload = ref(null);
+
+// sede del empleado logueado (para filtrar automaticamente si no es ceo)
+const miSedeId = ref(null);
 
 // cargamos los festivos, sedes y comprobamos el rol al montar
 onMounted(async () => {
@@ -31,13 +34,43 @@ onMounted(async () => {
       console.error("Error decodificando token");
     }
   }
-  // cargamos las sedes para los selectores
-  await fetchSedes();
-  // cargamos todos los festivos
-  fetchHolidays();
+
+  if (isCeo.value) {
+    // el ceo ve todas las sedes y puede filtrar libremente
+    await fetchSedes();
+    fetchHolidays();
+  } else {
+    // si es empleado o supervisor buscamos su sede para filtrar automaticamente
+    await fetchMiSede();
+    fetchHolidays();
+  }
 });
 
-// obtenemos las sedes del backend
+// buscamos la sede del empleado logueado consultando sus datos
+const fetchMiSede = async () => {
+  try {
+    const res = await client.get('/employees');
+    const empleados = res.data.data;
+    // el endpoint devuelve solo nuestro registro si somos empleado
+    // o los asignados si somos supervisor, cogemos el primero con nuestro cognito_id
+    const token = localStorage.getItem('idToken');
+    if (token) {
+      const decoded = jwtDecode(token);
+      const miCognitoId = decoded.sub;
+      // buscamos nuestro propio registro en la respuesta
+      const yo = empleados.find(emp => emp.cognito_id === miCognitoId);
+      if (yo && yo.sede_id) {
+        miSedeId.value = yo.sede_id;
+        // fijamos el filtro a nuestra sede para que solo veamos nuestros festivos
+        sedeSeleccionada.value = yo.sede_id;
+      }
+    }
+  } catch (error) {
+    console.error("Error obteniendo sede del empleado", error);
+  }
+};
+
+// obtenemos las sedes del backend (solo para el ceo)
 const fetchSedes = async () => {
   try {
     const res = await client.get('/sedes');
@@ -65,7 +98,7 @@ const fetchHolidays = async () => {
   }
 };
 
-// cuando el usuario cambia el filtro de sede recargamos los festivos
+// cuando el ceo cambia el filtro de sede recargamos los festivos
 const onFiltroSedeChange = () => {
   fetchHolidays();
 };
@@ -196,8 +229,9 @@ const formatDate = (dateStr) => {
       <p class="text-blue-600 text-xs mt-0.5">Separador: punto y coma (;). Sin cabecera. Un CSV por cada sede.</p>
     </div>
 
-    <!-- Filtro por sede -->
-    <div class="mb-6 flex items-center gap-3">
+    <!-- Filtro por sede: solo visible para el CEO -->
+    <!-- El empleado ve automaticamente los festivos de su sede -->
+    <div v-if="isCeo" class="mb-6 flex items-center gap-3">
       <label class="text-sm font-medium text-gray-600">Filtrar por sede:</label>
       <select
         v-model="sedeSeleccionada"
@@ -219,7 +253,8 @@ const formatDate = (dateStr) => {
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">ID</th>
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Fecha</th>
             <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Descripción</th>
-            <th class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Sede</th>
+            <!-- La columna sede solo se muestra al CEO, el empleado solo ve los suyos -->
+            <th v-if="isCeo" class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider">Sede</th>
             <th v-if="isCeo" class="p-5 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">Acciones</th>
           </tr>
         </thead>
@@ -228,7 +263,7 @@ const formatDate = (dateStr) => {
             <td class="p-5 font-semibold text-gray-700">{{ holiday.id }}</td>
             <td class="p-5 text-gray-500 font-medium">{{ formatDate(holiday.holiday_date) }}</td>
             <td class="p-5 text-gray-500 font-medium">{{ holiday.description || '-' }}</td>
-            <td class="p-5">
+            <td v-if="isCeo" class="p-5">
               <span class="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">
                 {{ holiday.sede_nombre }}
               </span>
@@ -242,12 +277,12 @@ const formatDate = (dateStr) => {
             </td>
           </tr>
           <tr v-if="holidays.length === 0 && !loading">
-            <td :colspan="isCeo ? 5 : 4" class="p-20 text-center text-gray-400 font-medium">
+            <td :colspan="isCeo ? 5 : 3" class="p-20 text-center text-gray-400 font-medium">
               No hay días festivos registrados.
             </td>
           </tr>
           <tr v-if="loading">
-            <td :colspan="isCeo ? 5 : 4" class="p-20 text-center text-gray-400 font-medium">
+            <td :colspan="isCeo ? 5 : 3" class="p-20 text-center text-gray-400 font-medium">
               Cargando festivos...
             </td>
           </tr>
