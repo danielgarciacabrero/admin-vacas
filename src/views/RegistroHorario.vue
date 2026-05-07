@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import client from '../api/client';
+import * as XLSX from 'xlsx';
 
 // lista de empleados para el selector
 const empleados = ref([]);
@@ -85,37 +86,27 @@ const aplicarFiltros = () => {
   cargarFichajes();
 };
 
-const exportarExcel = async () => {
-  exportando.value = true;
-  try {
-    const params = new URLSearchParams();
-    if (filtroEmpleado.value) params.append('employee_id', filtroEmpleado.value);
-    if (filtroDesde.value) params.append('fecha_desde', filtroDesde.value);
-    if (filtroHasta.value) params.append('fecha_hasta', filtroHasta.value);
-
-    const token = localStorage.getItem('idToken');
-    const baseUrl = client.defaults.baseURL.replace(/\/$/, '');
-    const queryString = params.toString() ? '?' + params.toString() : '';
-
-    // descargamos el excel con fetch nativo para manejar bien el binario
-    const res = await fetch(baseUrl + '/fichajes/export' + queryString, {
-      headers: { 'Authorization': token }
-    });
-
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'fichajes.xlsx');
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (error) {
-    alert('Error exportando fichajes');
-  } finally {
-    exportando.value = false;
+const exportarExcel = () => {
+  if (fichajes.value.length === 0) {
+    alert('No hay fichajes para exportar');
+    return;
   }
+
+  const filas = fichajes.value.map(f => ({
+    'Empleado': f.employee_name,
+    'Fecha': f.fecha,
+    'Entrada': f.hora_entrada ? new Date(f.hora_entrada).toLocaleTimeString('es-ES') : '',
+    'Salida': f.hora_salida ? new Date(f.hora_salida).toLocaleTimeString('es-ES') : 'Sin fichar',
+    'Horas': f.horas_trabajadas || 0,
+    'Fuera horario': f.fuera_de_horario ? 'Si' : 'No',
+    'Comentario entrada': f.comentario_entrada || '',
+    'Comentario salida': f.comentario_salida || ''
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(filas);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Fichajes');
+  XLSX.writeFile(workbook, 'fichajes.xlsx');
 };
 
 const formatHora = (dateStr) => {
