@@ -94,7 +94,7 @@ const exportarExcel = async () => {
     if (filtroHasta.value) params.append('fecha_hasta', filtroHasta.value);
 
     const token = localStorage.getItem('idToken');
-    const baseUrl = client.defaults.baseURL;
+    const baseUrl = client.defaults.baseURL.replace(/\/$/, '');
     const queryString = params.toString() ? '?' + params.toString() : '';
 
     // descargamos el excel con fetch nativo para manejar bien el binario
