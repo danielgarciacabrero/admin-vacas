@@ -88,18 +88,22 @@ const aplicarFiltros = () => {
 const exportarExcel = async () => {
   exportando.value = true;
   try {
-    const params = {};
-    if (filtroEmpleado.value) params.employee_id = filtroEmpleado.value;
-    if (filtroDesde.value) params.fecha_desde = filtroDesde.value;
-    if (filtroHasta.value) params.fecha_hasta = filtroHasta.value;
+    const params = new URLSearchParams();
+    if (filtroEmpleado.value) params.append('employee_id', filtroEmpleado.value);
+    if (filtroDesde.value) params.append('fecha_desde', filtroDesde.value);
+    if (filtroHasta.value) params.append('fecha_hasta', filtroHasta.value);
 
-    const res = await client.get('/fichajes/export', {
-      params,
-      responseType: 'blob'
+    const token = localStorage.getItem('idToken');
+    const baseUrl = client.defaults.baseURL;
+    const queryString = params.toString() ? '?' + params.toString() : '';
+
+    // descargamos el excel con fetch nativo para manejar bien el binario
+    const res = await fetch(baseUrl + '/fichajes/export' + queryString, {
+      headers: { 'Authorization': token }
     });
 
-    // descargamos el excel
-    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', 'fichajes.xlsx');
