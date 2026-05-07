@@ -92,28 +92,38 @@ const exportarExcel = () => {
     return;
   }
 
-  const filas = fichajes.value.map(f => ({
-    'Empleado': f.employee_name,
-    'Fecha': f.fecha,
-    'Entrada': f.hora_entrada ? new Date(f.hora_entrada).toLocaleTimeString('es-ES') : '',
-    'Salida': f.hora_salida ? new Date(f.hora_salida).toLocaleTimeString('es-ES') : 'Sin fichar',
-    'Horas': f.horas_trabajadas || 0,
-    'Fuera horario': f.fuera_de_horario ? 'Si' : 'No',
-    'Comentario entrada': f.comentario_entrada || '',
-    'Comentario salida': f.comentario_salida || ''
-  }));
+  try {
+    const filas = fichajes.value.map(f => ({
+      'Empleado': f.employee_name,
+      'Fecha': f.fecha,
+      'Entrada': f.hora_entrada ? new Date(f.hora_entrada).toLocaleTimeString('es-ES') : '',
+      'Salida': f.hora_salida ? new Date(f.hora_salida).toLocaleTimeString('es-ES') : 'Sin fichar',
+      'Horas': f.horas_trabajadas || 0,
+      'Fuera horario': f.fuera_de_horario ? 'Si' : 'No',
+      'Comentario entrada': f.comentario_entrada || '',
+      'Comentario salida': f.comentario_salida || ''
+    }));
 
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.json_to_sheet(filas);
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Fichajes');
-  XLSX.writeFile(workbook, 'fichajes.xlsx');
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(filas);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Fichajes');
+
+    // usamos write con array en vez de writeFile para que funcione bien en el navegador
+    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'fichajes.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error exportando:', error);
+    alert('Error al generar el Excel');
+  }
 };
-
-const formatHora = (dateStr) => {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-};
-
 const formatFecha = (dateStr) => {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('es-ES');
